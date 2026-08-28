@@ -1,0 +1,7 @@
+# Leitura de energia RAPL para o grupo wheel (painel de sistema).
+# Os contadores são root-only por padrão desde o ataque PLATYPUS (CVE-2020-8694):
+# energia de alta resolução pode ser usada como canal lateral. Liberado só para
+# wheel, não para o mundo.
+SUBSYSTEM=="powercap", ACTION=="add", \
+  RUN+="/usr/bin/chgrp -R wheel /sys%p", \
+  RUN+="/usr/bin/chmod -R g+rX /sys%p"
