@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Conky Panel Tray
+GenericName=Conky panel control
+Comment=Start, stop and schedule the Conky system panel
+Exec=/usr/bin/conky-panel-tray
+Icon=conky-panel-tray
+Terminal=false
+Categories=Utility;Monitor;
+Keywords=conky;panel;monitor;tray;system;

@@ -1,101 +1,84 @@
 #!/usr/bin/env bash
-# Instalador do painel Conky Fedora.
-#   ./install.sh            instala e sobe o painel
+# Instalação por fonte, sem root, para distros sem pacote aqui.
+#   ./install.sh            instala painel + tray e sobe
 #   ./install.sh --remove   remove tudo o que o instalador criou
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEST="$HOME/.config/conky/pride"
-AUTOSTART="$HOME/.config/autostart/conky-pride.desktop"
-UDEV="/etc/udev/rules.d/60-rapl.rules"
+CONF="$HOME/.config/conky/pride"
+LIB="$HOME/.local/share/conky-fedora-panel"
+BIN="$HOME/.local/bin/conky-panel-tray"
+UNITDIR="$HOME/.config/systemd/user"
+DESKTOP="$HOME/.local/share/applications/conky-panel-tray.desktop"
 
 say()  { printf '\033[1m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m!!\033[0m  %s\n' "$*"; }
 
-stop_panel() {
-    local p
+if [[ ${1:-} == --remove ]]; then
+    say "parando e removendo"
+    systemctl --user disable --now conky-panel-tray.service 2>/dev/null || true
+    systemctl --user disable --now conky-fedora-panel.service 2>/dev/null || true
     for p in $(pgrep -x conky 2>/dev/null || true); do
         tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null | grep -q "conky/pride" && kill "$p" || true
     done
-    systemctl --user stop conky-pride 2>/dev/null || true
-    systemctl --user reset-failed conky-pride 2>/dev/null || true
-}
-
-if [[ ${1:-} == --remove ]]; then
-    say "parando o painel"
-    stop_panel
-    rm -f "$AUTOSTART"
-    rm -rf "$DEST"
-    rm -f "/tmp/.conky-pride."* "$HOME/.local/state/conky-pride/headset"
-    say "removido. A regra udev do RAPL ficou em $UDEV — apague à mão se quiser:"
-    echo "    sudo rm $UDEV && sudo udevadm control --reload-rules"
+    rm -rf "$LIB"
+    rm -f "$BIN" "$DESKTOP" \
+          "$UNITDIR/conky-fedora-panel.service" "$UNITDIR/conky-panel-tray.service" \
+          "$HOME/.config/autostart/conky-pride.desktop"
+    systemctl --user daemon-reload 2>/dev/null || true
+    say "removido. A tua config em $CONF ficou, apague à mão se quiser."
     exit 0
 fi
 
-# ── dependências ────────────────────────────────────────────
 say "conferindo dependências"
-missing=()
-command -v conky >/dev/null || missing+=(conky)
-fc-list 2>/dev/null | grep -qi "Terminus (TTF)" || missing+=(ax86-terminus-ttf-fonts)
-command -v sensors >/dev/null || missing+=(lm_sensors)
-if (( ${#missing[@]} )); then
-    warn "faltando: ${missing[*]}"
-    echo "    sudo dnf install ${missing[*]}"
-    exit 1
-fi
-command -v nvidia-smi >/dev/null || warn "sem nvidia-smi: a seção GPU vai ficar vazia"
+command -v conky >/dev/null || { warn "falta o conky:  sudo dnf install conky"; exit 1; }
+fc-list 2>/dev/null | grep -qi "Terminus (TTF)" ||
+    warn "sem a fonte Terminus TTF o painel fica com o alinhamento torto"
+python3 -c "import PySide6.QtWidgets" 2>/dev/null ||
+    warn "sem PySide6 o painel funciona, mas o ícone de bandeja não"
 
-# ── arquivos ────────────────────────────────────────────────
-say "instalando em $DEST"
-stop_panel
-mkdir -p "$DEST/scripts" "$HOME/.local/state/conky-pride"
-install -m 0644 "$SRC/conky/pride.conf" "$DEST/pride.conf"
-install -m 0755 "$SRC"/conky/scripts/*.sh "$DEST/scripts/"
-
-# ── RAPL (consumo da CPU) ───────────────────────────────────
-if [[ -r /sys/class/powercap/intel-rapl:0/energy_uj ]]; then
-    say "RAPL já legível, pulando a regra udev"
+say "instalando a config em $CONF"
+mkdir -p "$CONF/scripts" "$LIB/conkytray" "$(dirname "$BIN")" "$UNITDIR" \
+         "$(dirname "$DESKTOP")"
+if [[ -f "$CONF/pride.conf" ]]; then
+    say "já existe uma config sua — mantida intacta"
 else
-    say "liberando os contadores de energia da CPU (precisa de root)"
-    if sudo install -m 0644 "$SRC/conky/60-rapl.rules" "$UDEV" &&
-       sudo udevadm control --reload-rules &&
-       sudo chgrp -R wheel /sys/devices/virtual/powercap/intel-rapl 2>/dev/null &&
-       sudo chmod -R g+rX /sys/devices/virtual/powercap/intel-rapl 2>/dev/null; then
-        say "RAPL liberado para o grupo wheel"
-    else
-        warn "não consegui liberar o RAPL; o campo Power vai ficar vazio"
-    fi
+    install -m 0644 "$SRC/conky/pride.conf"   "$CONF/pride.conf"
+    install -m 0755 "$SRC"/conky/scripts/*.sh "$CONF/scripts/"
 fi
+# cópia pristina, para o "Reset config" do tray ter de onde restaurar
+install -d "$LIB/scripts"
+install -m 0644 "$SRC/conky/pride.conf"    "$LIB/pride.conf"
+install -m 0755 "$SRC"/conky/scripts/*.sh  "$LIB/scripts/"
+install -m 0644 "$SRC/conky/60-rapl.rules" "$LIB/60-rapl.rules"
+install -m 0644 "$SRC"/tray/conkytray/*.py "$LIB/conkytray/"
+install -m 0644 "$SRC/assets/conky-panel-tray-256.png" "$LIB/icon.png"
 
-# ── autostart ───────────────────────────────────────────────
-say "criando autostart"
-mkdir -p "$(dirname "$AUTOSTART")"
-cat > "$AUTOSTART" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Conky (pride)
-Comment=Painel de sistema detalhado
-Exec=conky -p 10 -c $DEST/pride.conf
-Icon=utilities-system-monitor
-Terminal=false
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
-X-KDE-autostart-after=panel
+cat > "$BIN" <<EOF
+#!/bin/sh
+export PYTHONPATH="$LIB\${PYTHONPATH:+:\$PYTHONPATH}"
+exec python3 -m conkytray "\$@"
 EOF
+chmod 0755 "$BIN"
 
-# ── subir agora ─────────────────────────────────────────────
-say "subindo o painel"
-if command -v systemd-run >/dev/null; then
-    systemd-run --user --unit=conky-pride --collect /usr/bin/conky -c "$DEST/pride.conf" >/dev/null 2>&1 ||
-        setsid conky -c "$DEST/pride.conf" >/dev/null 2>&1 < /dev/null &
-else
-    setsid conky -c "$DEST/pride.conf" >/dev/null 2>&1 < /dev/null &
-fi
+sed "s|/usr/bin/conky-panel-tray|$BIN|" "$SRC/systemd/conky-panel-tray.service" \
+    > "$UNITDIR/conky-panel-tray.service"
+cp "$SRC/systemd/conky-fedora-panel.service" "$UNITDIR/conky-fedora-panel.service"
+sed -e "s|/usr/bin/conky-panel-tray|$BIN|" -e "s|^Icon=.*|Icon=$LIB/icon.png|" \
+    "$SRC/systemd/conky-panel-tray.desktop" > "$DESKTOP"
+
+say "ligando o painel e o tray"
+rm -f "$HOME/.config/autostart/conky-pride.desktop"
+systemctl --user daemon-reload
+systemctl --user enable --now conky-fedora-panel.service
+python3 -c "import PySide6.QtWidgets" 2>/dev/null &&
+    systemctl --user enable --now conky-panel-tray.service || true
 
 sleep 2
-say "pronto. O painel fica atrás das janelas (camada 'below') — minimize para ver."
+systemctl --user is-active --quiet conky-fedora-panel.service &&
+    say "painel no ar" || warn "painel não subiu: journalctl --user -u conky-fedora-panel -n 30"
+
 echo
-echo "  reiniciar:  systemctl --user restart conky-pride"
-echo "  parar:      systemctl --user stop conky-pride"
-echo "  editar:     \$EDITOR $DEST/pride.conf"
+echo "  ligar/desligar:  pelo menu do ícone na bandeja"
+echo "  ou:              systemctl --user start|stop conky-fedora-panel"
+echo "  editar:          \$EDITOR $CONF/pride.conf"

@@ -1,0 +1,43 @@
+# Maintainer: Gabriel Marques Ferrarezi <110578985+gabrielmf1998@users.noreply.github.com>
+pkgname=conky-fedora-panel
+pkgver=1.1.0
+pkgrel=1
+pkgdesc="Dense Conky system panel with a tray control icon"
+arch=('any')
+url="https://github.com/gabrielmf1998/Conky-Fedora"
+license=('MIT')
+depends=('conky' 'python' 'pyside6')
+optdepends=('lm_sensors: board temperatures, fan RPM and voltages'
+            'nvidia-utils: the GPU section, via nvidia-smi'
+            'ttf-terminus-ttf: the bitmap font the panel is designed around')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    local share="$pkgdir/usr/share/$pkgname"
+
+    install -d "$share/scripts" "$share/conkytray"
+    install -m 0644 conky/pride.conf    "$share/"
+    install -m 0755 conky/scripts/*.sh  "$share/scripts/"
+    install -m 0644 conky/60-rapl.rules "$share/"
+    install -m 0644 tray/conkytray/*.py "$share/conkytray/"
+
+    install -Dm 0755 packaging/conky-panel-tray \
+        "$pkgdir/usr/bin/conky-panel-tray"
+    install -Dm 0644 systemd/conky-fedora-panel.service \
+        "$pkgdir/usr/lib/systemd/user/conky-fedora-panel.service"
+    install -Dm 0644 systemd/conky-panel-tray.service \
+        "$pkgdir/usr/lib/systemd/user/conky-panel-tray.service"
+    install -Dm 0644 systemd/conky-panel-tray.desktop \
+        "$pkgdir/usr/share/applications/conky-panel-tray.desktop"
+
+    for size in 48 64 128 256; do
+        install -Dm 0644 "assets/conky-panel-tray-${size}.png" \
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/conky-panel-tray.png"
+    done
+
+    install -Dm 0644 LICENSE   "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm 0644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    cp -r docs "$pkgdir/usr/share/doc/$pkgname/"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Conky panel tray control
+Documentation=https://github.com/gabrielmf1998/Conky-Fedora
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/conky-panel-tray
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

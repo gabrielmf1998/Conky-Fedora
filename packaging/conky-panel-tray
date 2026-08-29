@@ -1,0 +1,6 @@
+#!/bin/sh
+# Conky Panel Tray launcher.
+# The Python package lives outside site-packages so the same file works on
+# distros with different Python versions.
+export PYTHONPATH="/usr/share/conky-fedora-panel${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m conkytray "$@"
